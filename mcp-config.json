@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "cli-mcp-mapper": {
+      "type": "local",
+      "command": "cli-mcp-mapper",
+      "args": [],
+      "tools": ["*"]
+    }
+  }
+}
