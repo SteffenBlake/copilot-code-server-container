@@ -61,12 +61,14 @@ RUN ARCH="$(dpkg --print-architecture)" \
     && rm -f /tmp/s6-overlay-noarch.tar.xz /tmp/s6-overlay-arch.tar.xz
 
 # ============================================
-# Create locked-down agent user
+# Create locked-down agent user with "inner" docker daemon access
 # ============================================
 RUN useradd -m -s /bin/zsh agent && \
     mkdir -p /home/agent/workspace && \
     chown -R agent:agent /home/agent && \
-    chmod 700 /home/agent
+    chmod 700 /home/agent && \
+    groupadd -f docker && \
+    usermod -aG docker agent
 
 # ============================================
 # Install Node.js + npm
@@ -141,6 +143,8 @@ ENV SHELL=/usr/bin/zsh
 ENV HOME=/home/agent
 ENV USER=agent
 ENV LOGNAME=agent
+
+ENV PATH="${PATH}:/home/agent/.dotnet/tools"
 
 # Install oh-my-zsh for agent user
 RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended

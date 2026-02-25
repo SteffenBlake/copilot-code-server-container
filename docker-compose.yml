@@ -13,7 +13,7 @@ services:
       - docker-data:/var/lib/docker
 
       # Mount MCP configuration (managed externally)
-      - ./mcp-config.json:/home/agent/.copilot/mcp-config.json
+      - ./copilot:/home/agent/.copilot
 
       # Mount VS Code settings
       - ./vscode-settings.json:/home/agent/.local/share/code-server/User/settings.json
@@ -28,6 +28,8 @@ services:
 
     ports:
       - "8080:8080"
+      - "17275:17275"
+      - "65432:65432"
 
 volumes:
   agent-home:
