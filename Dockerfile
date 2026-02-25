@@ -1,26 +1,71 @@
 FROM debian:13
 
+ARG S6_OVERLAY_VERSION=3.2.1.0
+
 # Install base dependencies
 RUN apt-get update && apt-get install -y \
     git \
     curl \
     wget \
+    ca-certificates \
+    gnupg \
+    lsb-release \
     openssh-client \
     zsh \
     lazygit \
     pass \
-    gnupg \
+    iptables \
+    iproute2 \
+    xz-utils \
+    tar \
+    bash \
     && rm -rf /var/lib/apt/lists/*
+
+# ============================================
+# Install Docker Engine (official Debian instructions style)
+# ============================================
+RUN apt-get update \
+    && apt-get install -y ca-certificates curl \
+    && install -m 0755 -d /etc/apt/keyrings \
+    && curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc \
+    && chmod a+r /etc/apt/keyrings/docker.asc \
+    && . /etc/os-release \
+    && tee /etc/apt/sources.list.d/docker.sources >/dev/null <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/debian
+Suites: ${VERSION_CODENAME}
+Components: stable
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
+
+RUN apt-get update \
+    && apt-get install -y \
+        docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin \
+    && rm -rf /var/lib/apt/lists/*
+
+# ============================================
+# Install s6-overlay (minimal init + service supervisor)
+# ============================================
+RUN ARCH="$(dpkg --print-architecture)" \
+    && case "$ARCH" in \
+      amd64)  S6_ARCH=x86_64  ;; \
+      arm64)  S6_ARCH=aarch64 ;; \
+      *) echo "Unsupported architecture: $ARCH" && exit 1 ;; \
+    esac \
+    && curl -fsSL -o /tmp/s6-overlay-noarch.tar.xz \
+      "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-noarch.tar.xz" \
+    && curl -fsSL -o /tmp/s6-overlay-arch.tar.xz \
+      "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-${S6_ARCH}.tar.xz" \
+    && tar -C / -Jxpf /tmp/s6-overlay-noarch.tar.xz \
+    && tar -C / -Jxpf /tmp/s6-overlay-arch.tar.xz \
+    && rm -f /tmp/s6-overlay-noarch.tar.xz /tmp/s6-overlay-arch.tar.xz
 
 # ============================================
 # Create locked-down agent user
 # ============================================
 RUN useradd -m -s /bin/zsh agent && \
-    # Create workspace in agent's home directory
     mkdir -p /home/agent/workspace && \
-    # Set ownership
     chown -R agent:agent /home/agent && \
-    # Lock down home directory permissions
     chmod 700 /home/agent
 
 # ============================================
@@ -62,24 +107,45 @@ RUN curl -fsSL https://gh.io/copilot-install | bash
 # ============================================
 RUN npm i -g cli-mcp-mapper
 
-# Copy entrypoint script
-COPY entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
+# ============================================
+# Store agent bootstrap script in immutable image path (not volume-backed)
+# ============================================
+RUN mkdir -p /usr/local/share/copilot-code-server-container
+COPY entrypoint.sh /usr/local/share/copilot-code-server-container/agent-bootstrap.sh
+RUN chmod 0755 /usr/local/share/copilot-code-server-container/agent-bootstrap.sh
 
-# Switch to agent user
+# ============================================
+# Configure s6 services
+# ============================================
+COPY ./container-log-prefixer.sh /usr/local/share/copilot-code-server-container/container-log-prefixer.sh
+RUN chmod +x /usr/local/share/copilot-code-server-container/container-log-prefixer.sh
+
+COPY s6-overlay/ /etc/s6-overlay/
+
+RUN chmod +x \
+  /etc/s6-overlay/s6-rc.d/code-server/run \
+  /etc/s6-overlay/s6-rc.d/code-server/log/run \
+  /etc/s6-overlay/s6-rc.d/dockerd/run \
+  /etc/s6-overlay/s6-rc.d/dockerd/log/run 
+
+RUN /command/s6-rc-compile /etc/s6-overlay/s6-rc-compiled /etc/s6-overlay/s6-rc.d
+
+ENV S6_CMD_WAIT_FOR_SERVICES=1
+ENV S6_CMD_WAIT_FOR_SERVICES_MAXTIME=30000
+ENV S6_BEHAVIOUR_IF_STAGE2_FAILS=2
+
+# Switch to agent user for agent-owned config initialization
 USER agent
 
-# Set user environment variables
 ENV SHELL=/usr/bin/zsh
+ENV HOME=/home/agent
+ENV USER=agent
+ENV LOGNAME=agent
 
-# ============================================
 # Install oh-my-zsh for agent user
-# ============================================
 RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
 
-# ============================================
 # Initialize GPG and pass for credential storage
-# ============================================
 RUN gpg --batch --gen-key <<EOF && \
     pass init "agent@localhost"
 %no-protection
@@ -94,17 +160,16 @@ EOF
 RUN mkdir -p /home/agent/.local/share/code-server/User \
     && mkdir -p /home/agent/.config/Code/User/globalStorage/github.copilot-chat
 
-# Set working directory to agent's workspace
 WORKDIR /home/agent/workspace
 
 EXPOSE 8080
 
-# Healthcheck - verify code-server is responding
 HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
     CMD curl -f http://localhost:8080/healthz || exit 1
 
-# Setup always runs
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+# s6 init must run as root so dockerd can start; code-server runs as agent via s6 service
+USER root
 
-# Default command (can be overridden)
-CMD ["code-server", "--bind-addr", "0.0.0.0:8080", "--auth", "none", "/home/agent/workspace"]
+ENV DOCKER_HOST=unix:///var/run/docker.sock
+
+ENTRYPOINT ["/init"]

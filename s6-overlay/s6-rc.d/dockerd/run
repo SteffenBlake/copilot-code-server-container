@@ -1,0 +1,8 @@
+#!/command/with-contenv bash
+set -euo pipefail
+
+# Ensure runtime directory exists
+mkdir -p /var/run
+
+# Start Docker daemon (root)
+exec /usr/bin/dockerd --host=unix:///var/run/docker.sock

@@ -2,30 +2,33 @@ services:
   code-server:
     build: .
     container_name: copilot-code-server
-    
+
+    privileged: true
+
     volumes:
       # Persist entire agent home directory (includes config, extensions, workspace, everything)
       - agent-home:/home/agent
-      
+
+      # Persist Docker-in-Docker state (images/containers started by Aspire)
+      - docker-data:/var/lib/docker
+
       # Mount MCP configuration (managed externally)
       - ./mcp-config.json:/home/agent/.copilot/mcp-config.json
-      
+
       # Mount VS Code settings
       - ./vscode-settings.json:/home/agent/.local/share/code-server/User/settings.json
 
       # Mount cli-mcp-mapper commands
       - ./commands.json:/home/agent/.config/cli-mcp-mapper/commands.json
-    
+
     environment:
-      # Git configuration - set these in .env file
       - GIT_USERNAME=${GIT_USERNAME}
       - GIT_EMAIL=${GIT_EMAIL}
-      
-      # oh-my-zsh theme
       - ZSH_THEME=jonathan
-    
+
     ports:
       - "8080:8080"
 
 volumes:
   agent-home:
+  docker-data:

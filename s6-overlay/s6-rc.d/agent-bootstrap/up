@@ -1,0 +1,1 @@
+/command/with-contenv s6-setuidgid agent /usr/local/share/copilot-code-server-container/agent-bootstrap.sh true
