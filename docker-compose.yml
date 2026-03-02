@@ -6,7 +6,8 @@ services:
     privileged: true
 
     volumes:
-      # Persist entire agent home directory (includes config, extensions, workspace, everything)
+      # Persist entire agent home directory (includes config, workspace, everything except
+      # ~/.vscode-server/extensions which is managed via the bind-mount below)
       - agent-home:/home/agent
 
       # Persist Docker-in-Docker state (images/containers started by Aspire)
@@ -17,6 +18,11 @@ services:
 
       # Mount VS Code remote machine settings
       - ./vscode-settings.json:/home/agent/.vscode-server/data/Machine/settings.json
+
+      # Mount VS Code extensions directory so installs via the UI are git-tracked.
+      # Install extensions through VS Code, then commit ./vscode-server/extensions/
+      # to share the same extension set with other developers.
+      - ./vscode-server/extensions:/home/agent/.vscode-server/extensions
 
       # Mount cli-mcp-mapper commands
       - ./commands.json:/home/agent/.config/cli-mcp-mapper/commands.json

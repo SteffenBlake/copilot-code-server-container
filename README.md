@@ -4,7 +4,7 @@ A containerized development environment for **agentic programming** with GitHub 
 
 ## What is This?
 
-This project provides a fully containerized development environment pre-configured for GitHub Copilot agentic workflows. It uses **VS Code Remote-SSH** so developers connect with their local VS Code installation—meaning full, official GitHub Copilot support (no browser workarounds). The container runs a locked-down `agent` user with Docker-in-Docker, a pre-bootstrapped shell, and pre-installed extensions.
+This project provides a fully containerized development environment pre-configured for GitHub Copilot agentic workflows. It uses **VS Code Remote-SSH** so developers connect with their local VS Code installation—meaning full, official GitHub Copilot support (no browser workarounds). The container runs a locked-down `agent` user with Docker-in-Docker, a pre-bootstrapped shell, and a git-tracked extensions directory so the whole team shares the same VS Code setup.
 
 ```
 ┌─────────────────────────────────────────────┐
@@ -186,7 +186,6 @@ Defines custom commands available to the agent through the [cli-mcp-mapper](http
 | `agent-bootstrap` | oneshot | Validates env, generates SSH keys, configures git |
 | `sshd` | longrun | OpenSSH server on port 2222 |
 | `dockerd` | longrun | Docker daemon (Docker-in-Docker) |
-| `vscode-extensions-install` | oneshot | Pre-installs VS Code extensions (idempotent) |
 
 ### Security Features
 
@@ -203,7 +202,7 @@ Defines custom commands available to the agent through the [cli-mcp-mapper](http
 - **Version Control**: git, lazygit
 - **Security**: GPG, pass (password manager), OpenSSH
 - **Shell**: zsh with oh-my-zsh (jonathan theme)
-- **AI Tools**: GitHub CLI (`gh`) with Copilot extension, cli-mcp-mapper
+- **AI Tools**: cli-mcp-mapper
 - **Docker**: Docker Engine + Docker Compose plugin
 
 ## Common Tasks
@@ -247,15 +246,11 @@ docker compose up -d --build
 
 ## Persistent Data
 
-All data in `/home/agent` is stored in a Docker named volume (`agent-home`), which persists between container restarts. This includes:
+Agent home (`/home/agent`) is stored in a Docker named volume (`agent-home`), which persists between container restarts. This includes workspace files, shell history, SSH keys, git credentials, and VS Code server state (excluding extensions).
 
-- Your workspace files
-- Installed VS Code extensions (`~/.vscode-server/`)
-- Shell history and configuration
-- SSH keys (generated on first run)
-- Git credentials
+VS Code extensions are stored in `./vscode-server/extensions/` — a bind-mounted directory tracked in this git repo. Extensions you install via the VS Code UI go there automatically; commit the directory to share them with your team.
 
-To completely reset the environment, remove the volume with `docker compose down -v`.
+To completely reset the environment, remove the volume with `docker compose down -v` (your committed extensions in `vscode-server/extensions/` are unaffected, being in the repo, not the volume).
 
 ## Port Configuration
 
@@ -290,7 +285,22 @@ environment:
 
 ### Adding VS Code Extensions
 
-Extensions can be installed through VS Code after connecting, or add them to the `install-vscode-extensions.sh` script to pre-install them on container startup.
+Extensions are managed via the **git-tracked `vscode-server/extensions/` directory** in this repo, which is bind-mounted into the container at `~/.vscode-server/extensions`.
+
+**Workflow:**
+
+1. Connect to the container via VS Code Remote-SSH
+2. Install extensions normally through the VS Code Extensions panel (Ctrl+Shift+X)
+3. Back on your host machine, the installed extensions appear in `./vscode-server/extensions/`
+4. Commit the directory to share extensions with the team:
+
+```bash
+git add vscode-server/extensions/
+git commit -m "Add VS Code extensions: github.copilot, ..."
+git push
+```
+
+When a team member clones the repo and starts the container, VS Code finds the extensions pre-installed in the bind-mounted directory — no manual install needed.
 
 ## Troubleshooting
 

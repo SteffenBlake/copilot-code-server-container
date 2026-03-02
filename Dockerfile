@@ -113,18 +113,6 @@ RUN mkdir -p /run/sshd && \
     ssh-keygen -A
 
 # ============================================
-# Install GitHub CLI (gh)
-# ============================================
-RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
-        | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
-    && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
-    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
-        | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
-    && apt-get update \
-    && apt-get install -y gh \
-    && rm -rf /var/lib/apt/lists/*
-
-# ============================================
 # Install cli-mcp-mapper
 # ============================================
 RUN npm i -g cli-mcp-mapper
@@ -135,9 +123,6 @@ RUN npm i -g cli-mcp-mapper
 RUN mkdir -p /usr/local/share/copilot-code-server-container
 COPY entrypoint.sh /usr/local/share/copilot-code-server-container/agent-bootstrap.sh
 RUN chmod 0755 /usr/local/share/copilot-code-server-container/agent-bootstrap.sh
-
-COPY install-vscode-extensions.sh /usr/local/share/copilot-code-server-container/install-vscode-extensions.sh
-RUN chmod 0755 /usr/local/share/copilot-code-server-container/install-vscode-extensions.sh
 
 # ============================================
 # Configure s6 services
