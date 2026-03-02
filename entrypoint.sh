@@ -37,28 +37,69 @@ export GIT_COMMITTER_NAME="$GIT_USERNAME"
 export GIT_COMMITTER_EMAIL="$GIT_EMAIL"
 
 # ============================================
-# SSH key auto-generation
+# SSH key auto-generation (ed25519)
 # ============================================
 SSH_DIR="/home/agent/.ssh"
-SSH_KEY="$SSH_DIR/id_rsa"
+SSH_KEY="$SSH_DIR/id_ed25519"
 
 if [ ! -f "$SSH_KEY" ]; then
-    echo "🔑 SSH keys not found. Generating new SSH key pair..."
+    echo "🔑 SSH keys not found. Generating new ed25519 SSH key pair..."
     mkdir -p "$SSH_DIR"
-    ssh-keygen -t rsa -b 4096 -f "$SSH_KEY" -N "" -C "${GIT_EMAIL}"
+    ssh-keygen -t ed25519 -f "$SSH_KEY" -N "" -C "${GIT_EMAIL}"
     chmod 700 "$SSH_DIR"
     chmod 600 "$SSH_KEY"
     chmod 644 "$SSH_KEY.pub"
     echo "✅ SSH key pair generated at $SSH_KEY"
-    echo ""
-    echo "📋 Your public key (add this to Azure DevOps):"
-    echo "================================================"
-    cat "$SSH_KEY.pub"
-    echo "================================================"
-    echo ""
 else
     echo "✅ SSH keys already exist at $SSH_KEY"
 fi
+
+# ============================================
+# Setup authorized_keys for container SSH access
+# ============================================
+AUTHORIZED_KEYS="$SSH_DIR/authorized_keys"
+if [ ! -f "$AUTHORIZED_KEYS" ]; then
+    cp "$SSH_KEY.pub" "$AUTHORIZED_KEYS"
+    chmod 600 "$AUTHORIZED_KEYS"
+    echo "✅ authorized_keys configured for Remote-SSH access"
+fi
+
+# ============================================
+# Output VS Code Remote-SSH connection instructions
+# ============================================
+echo ""
+echo "🚀 ============================================================"
+echo "   VS Code Remote-SSH Connection Instructions"
+echo "   ============================================================"
+echo ""
+echo "📋 Your public SSH key (add this to Azure DevOps / GitHub for git access):"
+echo "------------------------------------------------"
+cat "$SSH_KEY.pub"
+echo "------------------------------------------------"
+echo ""
+echo "🔐 To connect via VS Code Remote-SSH:"
+echo ""
+echo "  1. Copy the private key below to your host machine:"
+echo "     Save it as: ~/.ssh/copilot-dev-container"
+echo "     Then run:   chmod 600 ~/.ssh/copilot-dev-container"
+echo ""
+echo "  ---- BEGIN PRIVATE KEY (copy everything between the lines) ----"
+cat "$SSH_KEY"
+echo "  ---- END PRIVATE KEY ----"
+echo ""
+echo "  2. Add the following to your host ~/.ssh/config:"
+echo ""
+echo "     Host copilot-dev"
+echo "       HostName localhost"
+echo "       Port 2222"
+echo "       User agent"
+echo "       IdentityFile ~/.ssh/copilot-dev-container"
+echo "       StrictHostKeyChecking accept-new"
+echo ""
+echo "  3. In VS Code: F1 → 'Remote-SSH: Connect to Host' → copilot-dev"
+echo ""
+echo "🚀 ============================================================"
+echo ""
 
 # ============================================
 # Configure git

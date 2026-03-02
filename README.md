@@ -1,10 +1,30 @@
-# Copilot Code Server Container
+# Copilot Dev Container (VS Code Remote-SSH)
 
-A containerized development environment for **agentic programming** with GitHub Copilot, designed for secure sandboxing and quick, replicatable setups.
+A containerized development environment for **agentic programming** with GitHub Copilot, accessed via **VS Code Remote-SSH** for full official Copilot support. Designed for secure sandboxing, Docker-in-Docker, and quick, replicatable setups.
 
 ## What is This?
 
-This project provides a fully containerized [code-server](https://github.com/coder/code-server) environment (VS Code in the browser) pre-configured for GitHub Copilot agentic workflows. It's designed to give AI agents a safe, isolated workspace where they can code, build, test, and manage projects without affecting your host system.
+This project provides a fully containerized development environment pre-configured for GitHub Copilot agentic workflows. It uses **VS Code Remote-SSH** so developers connect with their local VS Code installation—meaning full, official GitHub Copilot support (no browser workarounds). The container runs a locked-down `agent` user with Docker-in-Docker, a pre-bootstrapped shell, and pre-installed extensions.
+
+```
+┌─────────────────────────────────────────────┐
+│  Your Host Machine                          │
+│                                             │
+│  ┌─────────────┐    SSH (port 2222)         │
+│  │  VS Code    │◄──────────────────────┐    │
+│  │  + Copilot  │                       │    │
+│  └─────────────┘   ┌───────────────────▼──┐ │
+│                    │  Docker Container    │ │
+│                    │  ┌───────────────┐   │ │
+│                    │  │  sshd :2222   │   │ │
+│                    │  │  dockerd      │   │ │
+│                    │  │  agent user   │   │ │
+│                    │  │  zsh / git    │   │ │
+│                    │  │  Node/Py/.NET │   │ │
+│                    │  └───────────────┘   │ │
+│                    └──────────────────────┘ │
+└─────────────────────────────────────────────┘
+```
 
 ## Why Use This?
 
@@ -21,8 +41,9 @@ This project provides a fully containerized [code-server](https://github.com/cod
 - **Easy reset**: Delete the container and volume to start fresh anytime
 
 ### 🛠️ Pre-configured Tooling
-- **code-server**: Browser-based VS Code experience
-- **GitHub Copilot**: Full Copilot support with custom MCP (Model Context Protocol) servers
+- **VS Code Remote-SSH**: Full native VS Code experience with official GitHub Copilot
+- **GitHub Copilot**: Full Copilot + Copilot Chat support with custom MCP servers
+- **Docker-in-Docker**: Run Docker commands inside the container
 - **Multi-language support**: Node.js, Python, .NET SDK 10.0 pre-installed
 - **Development tools**: git, lazygit, zsh with oh-my-zsh, and more
 - **Custom MCPs**: Extensible MCP configuration for enhanced agent capabilities
@@ -30,6 +51,7 @@ This project provides a fully containerized [code-server](https://github.com/cod
 ## Prerequisites
 
 - Docker and Docker Compose installed on your system
+- VS Code with the [Remote - SSH](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-ssh) extension installed
 - A GitHub Copilot subscription
 
 ## Quick Start
@@ -45,155 +67,179 @@ GIT_EMAIL=your.email@example.com
 
 These are **required** for git operations within the container.
 
-### 2. Run the Container
+### 2. Start the Container
 
 ```bash
 docker compose up -d --build
 ```
 
-This command will:
-- Build the Docker image
-- Start the code-server container in detached mode
-- Auto-generate SSH keys on first run
-- Set up the agent environment
+This will build the image and start the container. On first run, it automatically:
+- Generates an ed25519 SSH key pair for the agent
+- Sets up `authorized_keys` for Remote-SSH access
+- Bootstraps the git and shell environment
 
-### 3. Get Your SSH Public Key
+### 3. Extract the SSH Private Key
 
-On first run, the container automatically generates an SSH key pair for git operations. To view your public key:
+Run the following to see the connection instructions printed by the container on startup:
 
 ```bash
-docker logs copilot-code-server
+docker logs copilot-dev-container
 ```
 
 Look for the section that displays:
+
 ```
-📋 Your public key (add this to Azure DevOps):
-================================================
-ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQ...
-================================================
+🚀 ============================================================
+   VS Code Remote-SSH Connection Instructions
+   ============================================================
+
+🔐 To connect via VS Code Remote-SSH:
+
+  1. Copy the private key below to your host machine:
+     Save it as: ~/.ssh/copilot-dev-container
+     Then run:   chmod 600 ~/.ssh/copilot-dev-container
+
+  ---- BEGIN PRIVATE KEY (copy everything between the lines) ----
+-----BEGIN OPENSSH PRIVATE KEY-----
+...
+-----END OPENSSH PRIVATE KEY-----
+  ---- END PRIVATE KEY ----
 ```
 
-**Important**: Add this public key to your git hosting service (GitHub, Azure DevOps, GitLab, etc.) to enable git operations over SSH.
+Save the private key to `~/.ssh/copilot-dev-container` on your host machine and set permissions:
 
-### 4. Access code-server
-
-Open your browser and navigate to:
-```
-http://localhost:8080
+```bash
+chmod 600 ~/.ssh/copilot-dev-container
 ```
 
-You'll have a full VS Code environment running in your browser, ready for agentic development!
+### 4. Configure SSH on Your Host
+
+Add the following to your `~/.ssh/config`:
+
+```
+Host copilot-dev
+  HostName localhost
+  Port 2222
+  User agent
+  IdentityFile ~/.ssh/copilot-dev-container
+  StrictHostKeyChecking accept-new
+```
+
+### 5. Connect via VS Code Remote-SSH
+
+1. Open VS Code
+2. Press **F1** (or **Ctrl+Shift+P**)
+3. Type **Remote-SSH: Connect to Host**
+4. Select **copilot-dev**
+
+VS Code will install its server on the container and open a new window connected to the dev environment. The workspace is at `/home/agent/workspace`.
+
+### 6. Add Git SSH Key (Optional)
+
+The container also prints your **public** SSH key for git hosting services:
+
+```
+📋 Your public SSH key (add this to Azure DevOps / GitHub for git access):
+------------------------------------------------
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5... your.email@example.com
+------------------------------------------------
+```
+
+Add this key to your git hosting service (GitHub, Azure DevOps, GitLab, etc.) to enable authenticated git operations over SSH from within the container.
 
 ## Configuration Files
 
-This project uses several mounted JSON configuration files that you can customize:
+### `vscode-settings.json` - VS Code Remote Settings
 
-### `mcp-config.json` - MCP Server Configuration
-
-Configures Model Context Protocol (MCP) servers that extend GitHub Copilot's capabilities. The default configuration includes:
-
-```json
-{
-  "mcpServers": {
-    "cli-mcp-mapper": {
-      "type": "local",
-      "command": "cli-mcp-mapper",
-      "args": [],
-      "tools": ["*"]
-    }
-  }
-}
-```
-
-This file is mounted at `/home/agent/.copilot/mcp-config.json` inside the container.
-
-**To add custom MCPs**:
-1. Install the MCP package in the Dockerfile (add npm/pip install commands)
-2. Add the MCP server configuration to `mcp-config.json`
-3. Rebuild the container with `docker compose up -d --build`
-
-### `vscode-settings.json` - VS Code Settings
-
-Controls the code-server (VS Code) editor settings. Mounted at `/home/agent/.local/share/code-server/User/settings.json`.
+Controls VS Code editor settings applied on the remote container. Mounted at `/home/agent/.vscode-server/data/Machine/settings.json`.
 
 Default settings include:
 - GitHub Copilot enabled
 - Inline suggestions enabled
 - zsh as default terminal
 - Abyss color theme
-- Chat features configured for agent use
+- Copilot Chat agent mode enabled
 
-Customize this file to adjust your editor preferences.
+### `copilot/` - MCP Server Configuration
+
+Configures Model Context Protocol (MCP) servers that extend GitHub Copilot's capabilities. Mounted at `/home/agent/.copilot/`.
 
 ### `commands.json` - CLI MCP Mapper Commands
 
-Defines custom commands available to the agent through the [cli-mcp-mapper](https://github.com/SteffenBlake/cli-mcp-mapper) MCP server. This file is mounted at `/home/agent/.config/cli-mcp-mapper/commands.json`.
-
-The default configuration includes commands for:
-- .NET operations (build, restore, test, format, benchmarks)
-- Git operations (status, diff, commit, branch)
-- File system operations (ls, mv, mkdir, rm, grep, sed, wc)
-
-**To configure custom commands**, see the [cli-mcp-mapper documentation](https://github.com/SteffenBlake/cli-mcp-mapper) for detailed information on command structure and parameters.
+Defines custom commands available to the agent through the [cli-mcp-mapper](https://github.com/SteffenBlake/cli-mcp-mapper) MCP server. Mounted at `/home/agent/.config/cli-mcp-mapper/commands.json`.
 
 ## Architecture
 
 ### Container Structure
 
 - **Base Image**: Debian 13
-- **User**: Locked-down `agent` user with minimal permissions
-- **Workspace**: `/home/agent/workspace` (your working directory)
-- **Persistent Storage**: The entire `/home/agent` directory is persisted in a Docker volume, preserving:
-  - Configuration files
-  - VS Code extensions
-  - Workspace files
-  - SSH keys
-  - Git credentials
+- **Init System**: s6-overlay (manages sshd, dockerd, bootstrap services)
+- **SSH Server**: OpenSSH on port 2222 (key-based auth only, agent user only)
+- **User**: Locked-down `agent` user with docker group access
+- **Workspace**: `/home/agent/workspace`
+- **Persistent Storage**: `/home/agent` persisted in a Docker named volume
+
+### s6-overlay Services
+
+| Service | Type | Description |
+|---------|------|-------------|
+| `agent-bootstrap` | oneshot | Validates env, generates SSH keys, configures git |
+| `sshd` | longrun | OpenSSH server on port 2222 |
+| `dockerd` | longrun | Docker daemon (Docker-in-Docker) |
+| `vscode-extensions-install` | oneshot | Pre-installs VS Code extensions (idempotent) |
 
 ### Security Features
 
-- **Non-root user**: All operations run as the `agent` user
+- **Non-root user**: All development operations run as the `agent` user
+- **Key-based SSH only**: Password authentication disabled
+- **Agent-only SSH access**: `AllowUsers agent` in sshd_config
+- **No root SSH login**: `PermitRootLogin no`
 - **Isolated credentials**: GPG and pass configured for secure credential storage
-- **Container-specific SSH keys**: Generated per container, not shared with host
-- **Home directory permissions**: Locked down to 700 (user-only access)
+- **Home directory permissions**: Locked down to 700
 
 ### Installed Tools
 
 - **Languages**: Node.js, Python 3, .NET SDK 10.0
 - **Version Control**: git, lazygit
-- **Security**: GPG, pass (password manager)
+- **Security**: GPG, pass (password manager), OpenSSH
 - **Shell**: zsh with oh-my-zsh (jonathan theme)
-- **Editor**: code-server (VS Code in browser)
 - **AI Tools**: GitHub Copilot CLI, cli-mcp-mapper
+- **Docker**: Docker Engine + Docker Compose plugin
 
 ## Common Tasks
 
 ### View Container Logs
+
 ```bash
-docker logs copilot-code-server
+docker logs copilot-dev-container
 ```
 
 ### Restart the Container
+
 ```bash
 docker compose restart
 ```
 
 ### Stop the Container
+
 ```bash
 docker compose down
 ```
 
 ### Rebuild After Configuration Changes
+
 ```bash
 docker compose up -d --build
 ```
 
-### Access Container Shell
+### Access Container Shell Directly
+
 ```bash
-docker exec -it copilot-code-server zsh
+docker exec -it copilot-dev-container zsh
 ```
 
 ### Reset Everything (Fresh Start)
+
 ```bash
 docker compose down -v  # Warning: Deletes all container data!
 docker compose up -d --build
@@ -204,7 +250,7 @@ docker compose up -d --build
 All data in `/home/agent` is stored in a Docker named volume (`agent-home`), which persists between container restarts. This includes:
 
 - Your workspace files
-- Installed VS Code extensions
+- Installed VS Code extensions (`~/.vscode-server/`)
 - Shell history and configuration
 - SSH keys (generated on first run)
 - Git credentials
@@ -213,9 +259,13 @@ To completely reset the environment, remove the volume with `docker compose down
 
 ## Port Configuration
 
-- **8080**: code-server web interface (mapped to host port 8080)
+| Port | Purpose |
+|------|---------|
+| **2222** | SSH (VS Code Remote-SSH connection) |
+| **17275** | GitHub Copilot authentication callback |
+| **65432** | cli-mcp-mapper MCP server |
 
-To use a different port, modify the `ports` section in `docker-compose.yml`.
+To use a different SSH port, modify the `ports` section in `docker-compose.yml` and update your `~/.ssh/config` accordingly.
 
 ## Customization
 
@@ -240,31 +290,48 @@ environment:
 
 ### Adding VS Code Extensions
 
-Extensions can be installed through the code-server UI and will persist in the `agent-home` volume.
+Extensions can be installed through VS Code after connecting, or add them to the `install-vscode-extensions.sh` script to pre-install them on container startup.
 
 ## Troubleshooting
 
 ### Container Fails to Start
 
 Check logs for missing environment variables:
+
 ```bash
-docker logs copilot-code-server
+docker logs copilot-dev-container
 ```
 
 Ensure your `.env` file has `GIT_USERNAME` and `GIT_EMAIL` set.
 
+### Can't Connect via Remote-SSH
+
+1. Ensure the container is running: `docker ps`
+2. Check that the SSH key has correct permissions: `chmod 600 ~/.ssh/copilot-dev-container`
+3. Verify SSH config entry in `~/.ssh/config`
+4. Test SSH connectivity: `ssh copilot-dev`
+5. Check container SSH logs: `docker logs copilot-dev-container`
+
 ### Can't Push to Git Repositories
 
-1. Ensure you've added the container's SSH public key to your git host
-2. Check the public key with: `docker logs copilot-code-server`
-3. Verify git configuration: `docker exec copilot-code-server git config --list`
+1. Ensure you've added the container's public SSH key to your git host
+2. Check the public key with: `docker logs copilot-dev-container`
+3. Test git SSH: `ssh -T git@github.com` (from inside the container)
 
-### Port 8080 Already in Use
+### Port 2222 Already in Use
 
 Change the host port in `docker-compose.yml`:
+
 ```yaml
 ports:
-  - "8081:8080"  # Use port 8081 instead
+  - "2223:2222"  # Use port 2223 instead
+```
+
+Update your `~/.ssh/config` to match:
+
+```
+Host copilot-dev
+  Port 2223
 ```
 
 ## License
@@ -277,6 +344,6 @@ Contributions are welcome! Feel free to open issues or submit pull requests.
 
 ## Related Projects
 
-- [code-server](https://github.com/coder/code-server) - VS Code in the browser
+- [VS Code Remote-SSH](https://code.visualstudio.com/docs/remote/ssh) - Connect to remote machines with VS Code
 - [cli-mcp-mapper](https://github.com/SteffenBlake/cli-mcp-mapper) - CLI command MCP server
 - [GitHub Copilot](https://github.com/features/copilot) - AI pair programmer

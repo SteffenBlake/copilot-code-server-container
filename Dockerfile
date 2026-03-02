@@ -95,9 +95,22 @@ RUN wget https://packages.microsoft.com/config/debian/13/packages-microsoft-prod
     rm -rf /var/lib/apt/lists/*
 
 # ============================================
-# Install code-server
+# Install OpenSSH server
 # ============================================
-RUN curl -fsSL https://code-server.dev/install.sh | sh
+RUN apt-get update && apt-get install -y openssh-server && rm -rf /var/lib/apt/lists/*
+
+# Configure sshd: port 2222, key-based auth only, agent user only
+RUN mkdir -p /run/sshd && \
+    { \
+    echo ''; \
+    echo '# Remote-SSH configuration'; \
+    echo 'Port 2222'; \
+    echo 'PasswordAuthentication no'; \
+    echo 'PubkeyAuthentication yes'; \
+    echo 'PermitRootLogin no'; \
+    echo 'AllowUsers agent'; \
+    } >> /etc/ssh/sshd_config && \
+    ssh-keygen -A
 
 # ============================================
 # Install copilot CLI
@@ -116,6 +129,9 @@ RUN mkdir -p /usr/local/share/copilot-code-server-container
 COPY entrypoint.sh /usr/local/share/copilot-code-server-container/agent-bootstrap.sh
 RUN chmod 0755 /usr/local/share/copilot-code-server-container/agent-bootstrap.sh
 
+COPY install-vscode-extensions.sh /usr/local/share/copilot-code-server-container/install-vscode-extensions.sh
+RUN chmod 0755 /usr/local/share/copilot-code-server-container/install-vscode-extensions.sh
+
 # ============================================
 # Configure s6 services
 # ============================================
@@ -125,8 +141,8 @@ RUN chmod +x /usr/local/share/copilot-code-server-container/container-log-prefix
 COPY s6-overlay/ /etc/s6-overlay/
 
 RUN chmod +x \
-  /etc/s6-overlay/s6-rc.d/code-server/run \
-  /etc/s6-overlay/s6-rc.d/code-server/log/run \
+  /etc/s6-overlay/s6-rc.d/sshd/run \
+  /etc/s6-overlay/s6-rc.d/sshd/log/run \
   /etc/s6-overlay/s6-rc.d/dockerd/run \
   /etc/s6-overlay/s6-rc.d/dockerd/log/run 
 
@@ -161,17 +177,17 @@ Expire-Date: 0
 EOF
 
 # Create config directories
-RUN mkdir -p /home/agent/.local/share/code-server/User \
-    && mkdir -p /home/agent/.config/Code/User/globalStorage/github.copilot-chat
+RUN mkdir -p /home/agent/.vscode-server/data/Machine \
+    && mkdir -p /home/agent/.vscode-server/extensions
 
 WORKDIR /home/agent/workspace
 
-EXPOSE 8080
+EXPOSE 2222
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
-    CMD curl -f http://localhost:8080/healthz || exit 1
+    CMD bash -c 'echo > /dev/tcp/localhost/2222' || exit 1
 
-# s6 init must run as root so dockerd can start; code-server runs as agent via s6 service
+# s6 init must run as root so dockerd and sshd can start properly
 USER root
 
 ENV DOCKER_HOST=unix:///var/run/docker.sock
