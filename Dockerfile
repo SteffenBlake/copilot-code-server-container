@@ -131,9 +131,6 @@ RUN curl -fsSL https://code-server.dev/install.sh | sh
 # copilot CLI (medium expense, low volatility)
 RUN curl -fsSL https://gh.io/copilot-install | bash
 
-# Aspire CLI (low-medium expense, medium volatility)
-RUN curl -sSL https://aspire.dev/install.sh | bash
-
 # ============================================
 # PHASE 10: Install language-specific tools (medium volatility)
 # ============================================
@@ -158,6 +155,9 @@ ENV SHELL=/usr/bin/zsh \
     USER=agent \
     LOGNAME=agent \
     PATH="${PATH}:/home/agent/.dotnet/tools"
+
+# Aspire CLI (low-medium expense, medium volatility, must be run by the agent)
+RUN curl -sSL https://aspire.dev/install.sh | bash
 
 # Install oh-my-zsh for agent user
 RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended

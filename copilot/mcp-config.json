@@ -9,15 +9,23 @@
       ]
     },
     "aspire": {
-      "type": "local",
+      "type": "stdio",
       "command": "aspire",
       "args": [
         "mcp",
         "start"
       ],
-      "env": {
-        "DOTNET_ROOT": "${DOTNET_ROOT}"
-      },
+      "tools": [
+        "*"
+      ]
+    },
+    "playwright": {
+      "type": "local",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@playwright/mcp@latest"
+      ],
       "tools": [
         "*"
       ]
