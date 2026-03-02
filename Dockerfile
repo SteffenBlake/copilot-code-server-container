@@ -109,6 +109,20 @@ RUN mkdir -p /run/sshd && \
     echo 'PubkeyAuthentication yes'; \
     echo 'PermitRootLogin no'; \
     echo 'AllowUsers agent'; \
+    echo '# Only listen on IPv4 – avoids ::1 healthcheck log spam and'; \
+    echo '# simplifies VS Code Remote-SSH port-forwarding.'; \
+    echo 'AddressFamily inet'; \
+    echo '# Suppress any banner / last-login output.  VS Code Remote-SSH'; \
+    echo '# uses the SCP protocol to copy its server binary; any bytes'; \
+    echo '# output by sshd before the scp(1) ready-byte corrupt the'; \
+    echo '# handshake and cause the "Copying VS Code Server" spinner to'; \
+    echo '# hang forever.'; \
+    echo 'PrintMotd no'; \
+    echo 'PrintLastLog no'; \
+    echo '# Keep SSH connections alive during long file transfers.'; \
+    echo 'TCPKeepAlive yes'; \
+    echo 'ClientAliveInterval 60'; \
+    echo 'ClientAliveCountMax 10'; \
     } >> /etc/ssh/sshd_config && \
     ssh-keygen -A
 
@@ -184,7 +198,7 @@ WORKDIR /home/agent/workspace
 EXPOSE 2222
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
-    CMD bash -c 'echo > /dev/tcp/localhost/2222' || exit 1
+    CMD bash -c 'echo > /dev/tcp/127.0.0.1/2222' || exit 1
 
 # s6 init must run as root so dockerd and sshd can start properly
 USER root

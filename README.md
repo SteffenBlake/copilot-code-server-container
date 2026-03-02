@@ -125,16 +125,30 @@ Host copilot-dev
   StrictHostKeyChecking accept-new
 ```
 
-### 5. Connect via VS Code Remote-SSH
+### 5. Configure VS Code Remote-SSH Settings
+
+Before connecting for the first time, open VS Code Settings (**File → Preferences → Settings** or **Cmd/Ctrl+,**) and set:
+
+```json
+"remote.SSH.localServerDownload": "always"
+```
+
+This tells VS Code to download its server component locally and copy it to the container via SCP, rather than trying to download it from inside the container. This is the recommended approach and avoids network issues inside the container.
+
+> **Why?** VS Code Remote-SSH needs to install a ~100 MB "VS Code Server" binary on the remote machine on first connection. With `localServerDownload: "always"` VS Code downloads the binary on your host machine and copies it to the container via SSH. Without this setting VS Code tries to download the server from inside the container, which can fail if the container's outbound internet access is limited.
+
+### 6. Connect via VS Code Remote-SSH
 
 1. Open VS Code
 2. Press **F1** (or **Ctrl+Shift+P**)
 3. Type **Remote-SSH: Connect to Host**
 4. Select **copilot-dev**
 
-VS Code will install its server on the container and open a new window connected to the dev environment. The workspace is at `/home/agent/workspace`.
+On first connection VS Code will show **"Setting up SSH Host copilot-dev: Copying VS Code Server to host with scp"**. This copies ~100 MB over SSH and may take 30–60 seconds depending on your network speed. Subsequent connections are instant because the server is cached in the container's volume.
 
-### 6. Add Git SSH Key (Optional)
+VS Code will open a new window connected to the dev environment. The default workspace is at `/home/agent/workspace`.
+
+### 7. Add Git SSH Key (Optional)
 
 The container also prints your **public** SSH key for git hosting services:
 
@@ -313,6 +327,22 @@ docker logs copilot-dev-container
 ```
 
 Ensure your `.env` file has `GIT_USERNAME` and `GIT_EMAIL` set.
+
+### "Copying VS Code Server" Spinner Hangs Forever
+
+This means `remote.SSH.localServerDownload` is not set to `"always"`, or the VS Code Server download is not being found. Follow these steps:
+
+1. Open VS Code Settings (**Cmd/Ctrl+,**) and search for `remote.SSH.localServerDownload`
+2. Set it to **"always"** (not "off" or "auto")
+3. Reconnect — VS Code will download the server locally and copy it via SCP
+
+If it still hangs after setting `localServerDownload: "always"`, the SCP copy itself is likely timing out. Try connecting from a faster network or check for MTU issues between your machine and the container host.
+
+### "VS Code Server Could Not Be Downloaded" Error
+
+This means VS Code is trying to download the server from inside the container, and the container can't reach the VS Code CDN. Fix:
+
+Set `remote.SSH.localServerDownload: "always"` in VS Code Settings — this makes VS Code download the server on your local machine and copy it over SSH instead.
 
 ### Can't Connect via Remote-SSH
 
