@@ -7,7 +7,7 @@
 
 # VS Code remote server extensions (installed via UI, committed to share with team)
 !extensions/
-!extensions/**
+!extensions/extensions.json
 
 # VS Code remote machine settings
 !data/
