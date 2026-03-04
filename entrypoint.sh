@@ -66,23 +66,15 @@ export GIT_COMMITTER_NAME="$GIT_USERNAME"
 export GIT_COMMITTER_EMAIL="$GIT_EMAIL"
 
 # ============================================
-# SSH key auto-generation (ed25519 only)
+# SSH key auto-generation (RSA for Azure DevOps compatibility)
 # ============================================
 SSH_DIR="/home/agent/.ssh"
-SSH_KEY="$SSH_DIR/id_ed25519"
-
-# Remove any legacy id_rsa key pair left over from older container versions.
-# We standardise on a single ed25519 key pair only.
-if [ -f "$SSH_DIR/id_rsa" ] || [ -f "$SSH_DIR/id_rsa.pub" ]; then
-    echo "🧹 Removing legacy id_rsa key pair (standardising on ed25519 only)..."
-    rm -f "$SSH_DIR/id_rsa" "$SSH_DIR/id_rsa.pub"
-    echo "✅ Legacy id_rsa removed"
-fi
+SSH_KEY="$SSH_DIR/id_rsa"
 
 if [ ! -f "$SSH_KEY" ]; then
-    echo "🔑 SSH keys not found. Generating new ed25519 SSH key pair..."
+    echo "🔑 SSH keys not found. Generating new RSA SSH key pair..."
     mkdir -p "$SSH_DIR"
-    ssh-keygen -t ed25519 -f "$SSH_KEY" -N "" -C "${GIT_USERNAME} <${GIT_EMAIL}>"
+    ssh-keygen -t rsa -b 4096 -f "$SSH_KEY" -N "" -C "${GIT_USERNAME} <${GIT_EMAIL}>"
     chmod 700 "$SSH_DIR"
     chmod 600 "$SSH_KEY"
     chmod 644 "$SSH_KEY.pub"
@@ -109,20 +101,24 @@ echo "🚀 ============================================================"
 echo "   VS Code Remote-SSH Connection Instructions"
 echo "   ============================================================"
 echo ""
-echo "📋 Your public SSH key (add this to Azure DevOps / GitHub for git access):"
-echo "------------------------------------------------"
-cat "$SSH_KEY.pub"
-echo "------------------------------------------------"
-echo ""
+
 echo "🔐 To connect via VS Code Remote-SSH:"
 echo ""
-echo "  1. Copy the private key below to your host machine:"
-echo "     Save it as: ~/.ssh/copilot-dev-container"
-echo "     Then run:   chmod 600 ~/.ssh/copilot-dev-container"
+echo "  1. Copy the private key from the exported file:"
 echo ""
-echo "  ---- BEGIN PRIVATE KEY (copy everything between the lines) ----"
-cat "$SSH_KEY"
-echo "  ---- END PRIVATE KEY ----"
+
+# Copy keys to mounted volume for easy access
+if [ -d "/ssh-keys" ]; then
+  cp "$SSH_KEY" /ssh-keys/copilot-dev-container
+  cp "$SSH_KEY.pub" /ssh-keys/copilot-dev-container.pub
+  chmod 644 /ssh-keys/copilot-dev-container
+  chmod 644 /ssh-keys/copilot-dev-container.pub
+  echo "     📂 SSH keys exported to .ssh-keys/ directory"
+  echo ""
+  echo "     See README.md for setup instructions."
+else
+  echo "     ⚠️  /ssh-keys volume not mounted - keys only available in container"
+fi
 echo ""
 echo "  2. Add the following to your host ~/.ssh/config:"
 echo ""
@@ -164,6 +160,13 @@ chmod 600 "$SSH_DIR/config"
 echo "✅ SSH configured for Azure DevOps"
 
 # ============================================
+# Start SSH agent and add key for initial git clone
+# ============================================
+eval "$(ssh-agent -s)" > /dev/null
+ssh-add "$SSH_KEY" 2>/dev/null
+echo "✅ SSH agent started and key added"
+
+# ============================================
 # Clone or access repository
 # ============================================
 WORKSPACE_DIR="/home/agent/workspace"
@@ -179,10 +182,8 @@ if [ ! -d "$REPO_PATH" ]; then
         echo "❌ ERROR: Failed to clone repository (see error above)"
         echo ""
         echo "💡 This might be because your SSH key is not added to Azure DevOps."
-        echo "   If so, add your public key:"
-        echo "================================================"
-        cat "$SSH_KEY.pub"
-        echo "================================================"
+        echo "   Your public key is available at: .ssh-keys/copilot-dev-container.pub"
+        echo "   See README.md for instructions on adding it to Azure DevOps."
         echo ""
         echo "📖 Instructions for adding SSH key to Azure DevOps:"
         echo "   https://learn.microsoft.com/en-us/azure/devops/repos/git/use-ssh-keys-to-authenticate?view=azure-devops#step-2-add-the-public-key-to-azure-devops"

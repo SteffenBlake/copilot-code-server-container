@@ -18,6 +18,9 @@ services:
 
       # Mount cli-mcp-mapper commands
       - ./commands.json:/home/agent/.config/cli-mcp-mapper/commands.json
+      
+      # Export SSH keys to host filesystem
+      - ./.ssh-keys:/ssh-keys
 
     environment:
       # Per-developer Git configuration

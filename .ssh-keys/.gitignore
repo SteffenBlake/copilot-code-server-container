@@ -1,0 +1,4 @@
+# Ignore all SSH keys in this directory
+*
+# But keep this .gitignore file so the directory is tracked
+!.gitignore

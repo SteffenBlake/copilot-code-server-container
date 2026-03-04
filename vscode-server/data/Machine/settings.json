@@ -13,4 +13,6 @@
   "chat.agent.enabled": true,
   "chat.commandCenter.enabled": true,
   "remote.autoForwardPortsSource": "hybrid",
+  "remote.SSH.defaultFolder": "/home/agent/workspace/RecoveryTrac",
+  "github.gitProtocol": "ssh"
 }

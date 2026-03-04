@@ -154,6 +154,8 @@ RUN mkdir -p /run/sshd && \
     echo 'TCPKeepAlive yes'; \
     echo 'ClientAliveInterval 60'; \
     echo 'ClientAliveCountMax 10'; \
+    echo '# Allow SSH agent environment variables'; \
+    echo 'PermitUserEnvironment yes'; \
     } >> /etc/ssh/sshd_config && \
     ssh-keygen -A
 
@@ -173,15 +175,18 @@ RUN az extension add --name azure-devops
 
 RUN mkdir -p /usr/local/share/copilot-code-server-container
 COPY entrypoint.sh /usr/local/share/copilot-code-server-container/agent-bootstrap.sh
-RUN chmod 0755 /usr/local/share/copilot-code-server-container/agent-bootstrap.sh
 COPY system-bootstrap.sh /usr/local/share/copilot-code-server-container/system-bootstrap.sh
-RUN chmod 0755 /usr/local/share/copilot-code-server-container/system-bootstrap.sh
+RUN sed -i 's/\r$//' /usr/local/share/copilot-code-server-container/agent-bootstrap.sh \
+    /usr/local/share/copilot-code-server-container/system-bootstrap.sh && \
+    chmod 0755 /usr/local/share/copilot-code-server-container/agent-bootstrap.sh \
+    /usr/local/share/copilot-code-server-container/system-bootstrap.sh
 
 # ============================================
 # PHASE 12: Agent user environment setup (low volatility)
 # ============================================
 COPY ./container-log-prefixer.sh /usr/local/share/copilot-code-server-container/container-log-prefixer.sh
-RUN chmod +x /usr/local/share/copilot-code-server-container/container-log-prefixer.sh
+RUN sed -i 's/\r$//' /usr/local/share/copilot-code-server-container/container-log-prefixer.sh && \
+    chmod +x /usr/local/share/copilot-code-server-container/container-log-prefixer.sh
 
 COPY s6-overlay/ /etc/s6-overlay/
 
@@ -193,6 +198,10 @@ RUN chmod +x \
     /etc/s6-overlay/s6-rc.d/dockerd/log/run \
     /etc/s6-overlay/s6-rc.d/agent-bootstrap/up
 
+# Fix Windows line endings (CRLF → LF) for all s6 files
+# Without this, files like timeout-up will be invalid on Linux
+RUN find /etc/s6-overlay -type f -exec sed -i 's/\r$//' {} \;
+
 # Remove any legacy s6 service directories that external install scripts may
 # have created (e.g. code-server registers /etc/services.d/code-server/).
 # All services for this container are compiled into s6-rc-compiled; legacy
@@ -203,9 +212,10 @@ RUN rm -rf /etc/services.d/ /etc/cont-init.d/
 RUN /command/s6-rc-compile /etc/s6-overlay/s6-rc-compiled /etc/s6-overlay/s6-rc.d
 
 # S6_CMD_WAIT_FOR_SERVICES_MAXTIME: Set to 10 minutes to allow git clone with large submodules
-ENV S6_CMD_WAIT_FOR_SERVICES=1
-ENV S6_CMD_WAIT_FOR_SERVICES_MAXTIME=600000
-ENV S6_BEHAVIOUR_IF_STAGE2_FAILS=2
+ENV S6_CMD_WAIT_FOR_SERVICES=1 \
+    S6_CMD_WAIT_FOR_SERVICES_MAXTIME=600000 \
+    S6_BEHAVIOUR_IF_STAGE2_FAILS=2 \
+    DOCKER_HOST=unix:///var/run/docker.sock
 
 # Switch to agent user for agent-owned config initialization
 USER agent
@@ -221,6 +231,10 @@ RUN curl -sSL https://aspire.dev/install.sh | bash
 
 # Install oh-my-zsh for agent user
 RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
+
+# Configure SSH agent - source environment from entrypoint.sh if available
+RUN echo '\n# Load SSH agent environment from container startup\nif [ -f "$HOME/.ssh/ssh-agent-env" ]; then\n  source "$HOME/.ssh/ssh-agent-env"\nfi' >> /home/agent/.zshrc && \
+    echo '\n# Load SSH agent environment from container startup\nif [ -f "$HOME/.ssh/ssh-agent-env" ]; then\n  source "$HOME/.ssh/ssh-agent-env"\nfi' >> /home/agent/.bashrc
 
 # Initialize GPG and pass for credential storage
 RUN gpg --batch --gen-key <<EOF && \
@@ -244,7 +258,6 @@ USER root
 
 # Copy all agent scripts and configs
 # Note: When building on Windows, scripts may have CRLF line endings
-COPY entrypoint.sh /usr/local/share/copilot-code-server-container/agent-bootstrap.sh
 COPY start-issue.sh /usr/local/bin/start-issue
 COPY agent-git-push.sh /usr/local/bin/agent-git-push
 COPY agent-git-commit.sh /usr/local/bin/agent-git-commit
@@ -254,13 +267,12 @@ COPY repo-mappings.json allowed-repositories.conf /etc/
 
 # Fix Windows line endings (CRLF → LF) and set permissions in one layer
 # Without this, scripts fail with "No such file or directory" errors on Linux
-RUN sed -i 's/\r$//' /usr/local/share/copilot-code-server-container/agent-bootstrap.sh \
+RUN sed -i 's/\r$//' \
     /usr/local/bin/start-issue \
     /usr/local/bin/agent-git-push \
     /usr/local/bin/agent-git-commit \
     /usr/local/bin/agent-az-devops \
     /usr/local/bin/agent-az-devops-list-repositories && \
-    chmod 0755 /usr/local/share/copilot-code-server-container/agent-bootstrap.sh && \
     chmod +x /usr/local/bin/start-issue \
     /usr/local/bin/agent-git-push \
     /usr/local/bin/agent-git-commit \
@@ -274,20 +286,7 @@ ENV AZURE_DEVOPS_ORG=TDRRecoveryTrac \
     AZURE_DEVOPS_PROJECT=RecoveryTrac
 
 # ============================================
-# PHASE 15: Configure s6 services (high volatility)
-# ============================================
-COPY ./container-log-prefixer.sh /usr/local/share/copilot-code-server-container/container-log-prefixer.sh
-COPY s6-overlay/ /etc/s6-overlay/
-
-# Fix Windows line endings (CRLF → LF) for all s6 files and scripts
-# The find command ensures ALL s6 script files have Unix line endings
-RUN find /etc/s6-overlay -type f -exec sed -i 's/\r$//' {} \;
-
-# S6_CMD_WAIT_FOR_SERVICES_MAXTIME: Set to 10 minutes to allow git clone with large submodules
-ENV DOCKER_HOST=unix:///var/run/docker.sock
-
-# ============================================
-# PHASE 16: Final runtime configuration
+# PHASE 15: Final runtime configuration
 # ============================================
 WORKDIR /home/agent/workspace
 

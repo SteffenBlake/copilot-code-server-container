@@ -112,27 +112,49 @@ Look for the section that displays:
 
 🔐 To connect via VS Code Remote-SSH:
 
-  1. Copy the private key below to your host machine:
-     Save it as: ~/.ssh/copilot-dev-container
-     Then run:   chmod 600 ~/.ssh/copilot-dev-container
+  1. Copy the private key from the exported file:
 
-  ---- BEGIN PRIVATE KEY (copy everything between the lines) ----
------BEGIN OPENSSH PRIVATE KEY-----
-...
------END OPENSSH PRIVATE KEY-----
-  ---- END PRIVATE KEY ----
+     📂 SSH keys exported to .ssh-keys/ directory
+
+     See README.md for setup instructions.
+
+  2. Add the following to your host ~/.ssh/config:
+
+     Host copilot-dev
+       HostName localhost
+       Port 2222
+       User agent
+       IdentityFile ~/.ssh/copilot-dev-container
+       StrictHostKeyChecking accept-new
+
+  3. In VS Code: F1 → 'Remote-SSH: Connect to Host' → copilot-dev
 ```
 
-Save the private key to `~/.ssh/copilot-dev-container` on your host machine and set permissions:
+### 3. Copy the SSH Private Key to Your Host
+
+The container exports the SSH private key to `.ssh-keys/copilot-dev-container` in your project directory.
+
+**On Linux/Mac:**
 
 ```bash
+cp .ssh-keys/copilot-dev-container ~/.ssh/copilot-dev-container
 chmod 600 ~/.ssh/copilot-dev-container
 ```
 
+**On Windows (PowerShell):**
+
+```powershell
+Copy-Item .ssh-keys\copilot-dev-container $env:USERPROFILE\.ssh\copilot-dev-container
+icacls "$env:USERPROFILE\.ssh\copilot-dev-container" /inheritance:r /grant:r "$($env:USERNAME):(R)"
+```
+
+> **Important for Windows users**: If you see "invalid format" or "Permission denied (publickey)" errors, the most common cause is Windows line endings (CRLF) in the key file. Ensure the file uses Unix line endings (LF).
+
 ### 4. Configure SSH on Your Host
 
-Add the following to your `~/.ssh/config`:
+Add the following to your SSH config file:
 
+**Linux/Mac** (`~/.ssh/config`):
 ```
 Host copilot-dev
   HostName localhost
@@ -141,6 +163,18 @@ Host copilot-dev
   IdentityFile ~/.ssh/copilot-dev-container
   StrictHostKeyChecking accept-new
 ```
+
+**Windows** (`C:\Users\<YourUsername>\.ssh\config`):
+```
+Host copilot-dev
+  HostName localhost
+  Port 2222
+  User agent
+  IdentityFile C:/Users/<YourUsername>/.ssh/copilot-dev-container
+  StrictHostKeyChecking accept-new
+```
+
+> **Note for Windows**: Use forward slashes (/) in the `IdentityFile` path, even on Windows. Replace `<YourUsername>` with your actual Windows username.
 
 ### 5. Configure VS Code Remote-SSH Settings
 
@@ -161,22 +195,20 @@ This tells VS Code to download its server component locally and copy it to the c
 3. Type **Remote-SSH: Connect to Host**
 4. Select **copilot-dev**
 
-On first connection VS Code will show **"Setting up SSH Host copilot-dev: Copying VS Code Server to host with scp"**. This copies ~100 MB over SSH and may take 30–60 seconds depending on your network speed. Subsequent connections are instant because the server is cached in the container's volume.
-
 VS Code will open a new window connected to the dev environment. The default workspace is at `/home/agent/workspace`.
 
-### 7. Add Git SSH Key (Optional)
+On first connection VS Code will show **"Setting up SSH Host copilot-dev: Copying VS Code Server to host with scp"**. This copies ~100 MB over SSH and may take 30–60 seconds depending on your network speed. Subsequent connections are instant because the server is cached in the container's volume.
 
-The container also prints your **public** SSH key for git hosting services:
+> **Tip**: To view detailed progress during first connection, press **Ctrl+Shift+U** (or **Cmd+Shift+U** on Mac) to open the Output panel, then select **"Remote - SSH"** from the dropdown menu.
 
+### 7. Add Git SSH Key
+
+The container exports your **public** SSH key to `.ssh-keys/copilot-dev-container.pub`. View this file and add it to your git hosting service (GitHub, Azure DevOps, GitLab, etc.) to enable authenticated git operations over SSH from within the container.
+
+**To view your public key:**
+```bash
+cat .ssh-keys/copilot-dev-container.pub
 ```
-📋 Your public SSH key (add this to Azure DevOps / GitHub for git access):
-------------------------------------------------
-ssh-ed25519 AAAAC3NzaC1lZDI1NTE5... your.email@example.com
-------------------------------------------------
-```
-
-Add this key to your git hosting service (GitHub, Azure DevOps, GitLab, etc.) to enable authenticated git operations over SSH from within the container.
 
 ## Working with Azure DevOps Work Items
 
@@ -538,6 +570,31 @@ docker logs copilot-dev-container
 
 Ensure your `.env` file has `GIT_USERNAME` and `GIT_EMAIL` set.
 
+### "invalid format" or "Permission denied (publickey)" on Windows
+
+**Problem**: When connecting from Windows, you see errors like:
+```
+Load key "C:\\Users\\username/.ssh/copilot-dev-container": invalid format
+agent@localhost: Permission denied (publickey).
+```
+
+**Cause**: The SSH private key file has Windows line endings (CRLF) instead of Unix line endings (LF). OpenSSH on Windows requires Unix line endings for private key files.
+
+**Solution**:
+
+1. Open the key file (`C:\Users\<YourUsername>\.ssh\copilot-dev-container`) in VS Code
+2. Look at the bottom-right corner of VS Code - you'll see either `CRLF` or `LF`
+3. If it says `CRLF`, click it and select `LF` from the menu
+4. Save the file (Ctrl+S)
+5. Try connecting again
+
+**Verify the fix**:
+```powershell
+# Check if the file has Unix line endings (should show "LF")
+Get-Content $env:USERPROFILE\.ssh\copilot-dev-container -Raw | Select-String "`r`n"
+# If this returns matches, the file still has Windows line endings - fix it!
+```
+
 ### "Copying VS Code Server" Spinner Hangs Forever
 
 This means `remote.SSH.localServerDownload` is not set to `"always"`, or the VS Code Server download is not being found. Follow these steps:
@@ -598,7 +655,7 @@ The SSH config includes `LogLevel ERROR` to suppress these informational warning
 ### Can't Push to Git Repositories
 
 1. Ensure you've added the container's public SSH key to your git host
-2. Check the public key with: `docker logs copilot-dev-container`
+2. Check the public key: `cat .ssh-keys/copilot-dev-container.pub`
 3. Verify git configuration: From VS Code terminal run `git config --list`
 4. Test git SSH: `ssh -T git@github.com` (from inside container)
 
