@@ -18,6 +18,9 @@ services:
 
       # Mount cli-mcp-mapper commands
       - ./commands.json:/home/agent/.config/cli-mcp-mapper/commands.json
+      # Persist SSH host keys across image rebuilds so VS Code Remote-SSH
+      # doesn't see a host-key mismatch warning after every rebuild.
+      - ssh-host-keys:/etc/ssh
 
     environment:
       - GIT_USERNAME=${GIT_USERNAME}
@@ -28,6 +31,7 @@ services:
       - "2222:2222"
       - "17275:17275"
       - "65432:65432"
+      - "8443:8443"
 
     healthcheck:
       test: ["CMD", "bash", "-c", "echo > /dev/tcp/127.0.0.1/2222"]
@@ -39,3 +43,4 @@ services:
 volumes:
   agent-home:
   docker-data:
+  ssh-host-keys:

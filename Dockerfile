@@ -2,8 +2,30 @@ FROM debian:13
 
 ARG S6_OVERLAY_VERSION=3.2.1.0
 
+# Keyrings setup
+RUN apt-get update && apt-get install -y ca-certificates curl wget
+
+# Docker keyring
+RUN install -m 0755 -d /etc/apt/keyrings \
+    && curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc \
+    && chmod a+r /etc/apt/keyrings/docker.asc \
+    && . /etc/os-release \
+    && tee /etc/apt/sources.list.d/docker.sources >/dev/null <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/debian
+Suites: ${VERSION_CODENAME}
+Components: stable
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
+
+# Dotnet setup
+RUN wget https://packages.microsoft.com/config/debian/13/packages-microsoft-prod.deb -O packages-microsoft-prod.deb && \
+    dpkg -i packages-microsoft-prod.deb && \
+    rm packages-microsoft-prod.deb
+
 # Install base dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && \
+    apt-get install -y \
     git \
     curl \
     wget \
@@ -18,30 +40,51 @@ RUN apt-get update && apt-get install -y \
     iproute2 \
     xz-utils \
     tar \
-    bash \
-    && rm -rf /var/lib/apt/lists/*
+    bash
 
-# ============================================
-# Install Docker Engine (official Debian instructions style)
-# ============================================
-RUN apt-get update \
-    && apt-get install -y ca-certificates curl \
-    && install -m 0755 -d /etc/apt/keyrings \
-    && curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc \
-    && chmod a+r /etc/apt/keyrings/docker.asc \
-    && . /etc/os-release \
-    && tee /etc/apt/sources.list.d/docker.sources >/dev/null <<EOF
-Types: deb
-URIs: https://download.docker.com/linux/debian
-Suites: ${VERSION_CODENAME}
-Components: stable
-Signed-By: /etc/apt/keyrings/docker.asc
-EOF
+RUN apt-get install -y \
+    libasound2 \
+    libatk1.0-0 \
+    libcairo-gobject2 \
+    libcairo2 \
+    libdbus-1-3 \
+    libdbus-glib-1-2 \
+    libfontconfig1 \
+    libfreetype6 \
+    libgdk-pixbuf-2.0-0 \
+    libglib2.0-0 \
+    libgtk-3-0 \
+    libharfbuzz0b \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libx11-6 \
+    libx11-xcb1 \
+    libxcb-shm0 \
+    libxcb1 \
+    libxcomposite1 \
+    libxcursor1 \
+    libxdamage1 \
+    libxext6 \
+    libxfixes3 \
+    libxi6 \
+    libxrandr2 \
+    libxrender1 \
+    libxtst6
 
-RUN apt-get update \
-    && apt-get install -y \
-        docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get install -y \
+    docker-ce \
+    docker-ce-cli \
+    containerd.io \
+    docker-buildx-plugin \
+    docker-compose-plugin \
+    nodejs \
+    npm \
+    python3 \
+    python3-pip \
+    dotnet-sdk-10.0 \
+    openssh-server \
+    poppler-utils \
+    python3-pypdf
 
 # ============================================
 # Install s6-overlay (minimal init + service supervisor)
@@ -61,6 +104,11 @@ RUN ARCH="$(dpkg --print-architecture)" \
     && rm -f /tmp/s6-overlay-noarch.tar.xz /tmp/s6-overlay-arch.tar.xz
 
 # ============================================
+# Install cli-mcp-mapper
+# ============================================
+RUN npm i -g cli-mcp-mapper
+
+# ============================================
 # Create locked-down agent user with "inner" docker daemon access
 # ============================================
 RUN useradd -m -s /bin/zsh agent && \
@@ -69,35 +117,6 @@ RUN useradd -m -s /bin/zsh agent && \
     chmod 700 /home/agent && \
     groupadd -f docker && \
     usermod -aG docker agent
-
-# ============================================
-# Install Node.js + npm
-# ============================================
-RUN apt-get update && \
-    apt-get install -y nodejs npm && \
-    rm -rf /var/lib/apt/lists/*
-
-# ============================================
-# Install Python 3
-# ============================================
-RUN apt-get update && \
-    apt-get install -y python3 && \
-    rm -rf /var/lib/apt/lists/*
-
-# ============================================
-# Install .NET SDK 10.0
-# ============================================
-RUN wget https://packages.microsoft.com/config/debian/13/packages-microsoft-prod.deb -O packages-microsoft-prod.deb && \
-    dpkg -i packages-microsoft-prod.deb && \
-    rm packages-microsoft-prod.deb && \
-    apt-get update && \
-    apt-get install -y dotnet-sdk-10.0 && \
-    rm -rf /var/lib/apt/lists/*
-
-# ============================================
-# Install OpenSSH server
-# ============================================
-RUN apt-get update && apt-get install -y openssh-server && rm -rf /var/lib/apt/lists/*
 
 # Configure sshd: port 2222, key-based auth only, agent user only
 RUN mkdir -p /run/sshd && \
@@ -123,13 +142,7 @@ RUN mkdir -p /run/sshd && \
     echo 'TCPKeepAlive yes'; \
     echo 'ClientAliveInterval 60'; \
     echo 'ClientAliveCountMax 10'; \
-    } >> /etc/ssh/sshd_config && \
-    ssh-keygen -A
-
-# ============================================
-# Install cli-mcp-mapper
-# ============================================
-RUN npm i -g cli-mcp-mapper
+    } >> /etc/ssh/sshd_config
 
 # ============================================
 # Store agent bootstrap script in immutable image path (not volume-backed)

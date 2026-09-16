@@ -1,7 +1,17 @@
 #!/command/with-contenv bash
 set -euo pipefail
-
 # Ensure runtime directory exists for sshd
 mkdir -p /run/sshd
+
+# Host keys live on the ssh-host-keys volume (mounted at /etc/ssh) so they
+# persist across image rebuilds/container recreation. Only generate keys
+# that are missing; ssh-keygen -A itself already skips existing keys, but
+# we check explicitly so we can log what's happening on first boot.
+if ! ls /etc/ssh/ssh_host_*_key >/dev/null 2>&1; then
+    echo "sshd: no host keys found in /etc/ssh, generating..."
+    ssh-keygen -A
+else
+    echo "sshd: existing host keys found in /etc/ssh, reusing them."
+fi
 
 exec /usr/sbin/sshd -D -p 2222 -e
